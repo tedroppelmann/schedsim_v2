@@ -20,3 +20,4 @@ class ScheduleEvent:
         self.processor = 0
         self.type = _type
         self.extra = 0
+        self.response_ratio = 1

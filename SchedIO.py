@@ -20,6 +20,8 @@ def import_file(file_path):
                 scheduler = Scheduler.FIFO()
             if _scheduler.attrib['algorithm'] == 'SJF':
                 scheduler = Scheduler.SJF()
+            if _scheduler.attrib['algorithm'] == 'HRRN':
+                scheduler = Scheduler.HRRN()
         else:
             raise Exception(
                 'non scheduler are defined in the file')

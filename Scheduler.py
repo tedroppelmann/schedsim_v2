@@ -43,6 +43,7 @@ class Scheduler:
             elif task.type == 'sporadic':
                 event = SchedEvent.ScheduleEvent(task.activation, task, SchedEvent.EventType.activation.value)
                 arrival_events.append(event)
+        arrival_events.sort(key=lambda x: x.timestamp)
         return arrival_events
 
     def find_finish_events(self, time):
@@ -124,7 +125,6 @@ class FIFO(NonPreemptive):
 
     def execute(self):
         self.arrival_events = self.get_all_arrivals()
-        self.arrival_events.sort(key=lambda x: x.timestamp)
 
         time = self.start
         while time <= self.end:
@@ -145,11 +145,9 @@ class SJF(NonPreemptive):
     def __init__(self):
         super().__init__()
         self.name = 'SJF'
-        self.deadlineNeeded = False
 
     def execute(self):
         self.arrival_events = self.get_all_arrivals()
-        self.arrival_events.sort(key=lambda x: x.timestamp)
 
         time = self.start
         while time <= self.end:
@@ -159,6 +157,34 @@ class SJF(NonPreemptive):
             self.start_events.sort(key=lambda x: x.task.wcet)
             self.find_start_events(time)
             time += 1
+
+    def is_feasible(self, tasks):
+        pass
+
+
+class HRRN(NonPreemptive):
+
+    def __init__(self):
+        super().__init__()
+        self.name = 'HRRN'
+
+    def execute(self):
+        self.arrival_events = self.get_all_arrivals()
+
+        time = self.start
+        while time <= self.end:
+            self.calculate_responsive_ratio(time)
+            self.find_finish_events(time)
+            self.find_deadline_events(time)
+            self.find_arrival_event(time)
+            self.start_events.sort(key=lambda x: x.response_ratio, reverse=True)
+            self.find_start_events(time)
+            time += 1
+
+    def calculate_responsive_ratio(self, time):
+        for event in self.arrival_events:
+            if event.timestamp <= time:
+                event.response_ratio += 1/event.task.wcet
 
     def is_feasible(self, tasks):
         pass
