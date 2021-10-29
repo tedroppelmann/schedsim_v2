@@ -20,4 +20,9 @@ class ScheduleEvent:
         self.processor = 0
         self.type = _type
         self.extra = 0
+        # HRRN facilities:
         self.response_ratio = 1
+        self.init = self.timestamp
+        # SRTF facilities:
+        self.remaining_time = self.task.wcet
+        self.executing_time = 0

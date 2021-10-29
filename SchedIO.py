@@ -3,7 +3,7 @@ import Task
 import Scheduler
 
 
-def import_file(file_path):
+def import_file(file_path, output_file):
     scheduler = None
     root_node = ET.parse(file_path).getroot()
     if root_node.tag == 'simulation':
@@ -12,16 +12,18 @@ def import_file(file_path):
             if _scheduler.attrib['algorithm'] == 'RR':
                 if 'quantum' in _scheduler.attrib:
                     quantum = _scheduler.attrib['quantum']
-                    scheduler = Scheduler.RoundRobin(quantum)
+                    scheduler = Scheduler.RoundRobin(output_file, quantum)
                 else:
                     raise Exception(
                         'non "quantum" attribute are defined in the file')
             if _scheduler.attrib['algorithm'] == 'FIFO':
-                scheduler = Scheduler.FIFO()
+                scheduler = Scheduler.FIFO(output_file)
             if _scheduler.attrib['algorithm'] == 'SJF':
-                scheduler = Scheduler.SJF()
+                scheduler = Scheduler.SJF(output_file)
             if _scheduler.attrib['algorithm'] == 'HRRN':
-                scheduler = Scheduler.HRRN()
+                scheduler = Scheduler.HRRN(output_file)
+            if _scheduler.attrib['algorithm'] == 'SRTF':
+                scheduler = Scheduler.SRTF(output_file)
         else:
             raise Exception(
                 'non scheduler are defined in the file')
@@ -68,9 +70,8 @@ def import_file(file_path):
 
 
 class SchedulerEventWriter:
-    def __init__(self):
-        filename = 'out.txt'
-        self.out = open(filename, 'w')
+    def __init__(self, output_file):
+        self.out = open(output_file, 'w')
 
     def add_scheduler_event(self, scheduler_event):
         self.out.write(

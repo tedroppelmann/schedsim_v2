@@ -8,3 +8,5 @@ class Task:
         self.activation = activation
         self.deadline = deadline
         self.wcet = wcet
+        # Preemptive facilities:
+        self.finish = False

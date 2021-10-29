@@ -5,7 +5,7 @@ import SchedIO
 
 class Scheduler:
 
-    def __init__(self):
+    def __init__(self, output_file):
         self.name = 'GenericScheduler'
         self.tasks = []
         self.start = None
@@ -18,15 +18,15 @@ class Scheduler:
         self.deadline_events = []
         self.start_events = []
 
-        self.output_file = SchedIO.SchedulerEventWriter()
+        self.output_file = SchedIO.SchedulerEventWriter(output_file)
 
     @abstractmethod
     def execute(self):
         pass
 
     @abstractmethod
-    def is_feasible(self, tasks):
-        return NotImplementedError
+    def find_finish_events(self, time):
+        pass
 
     def get_all_arrivals(self):
         arrival_events = []
@@ -41,20 +41,11 @@ class Scheduler:
                     i += i + task.period
                     j += 1
             elif task.type == 'sporadic':
+                task.init = task.activation
                 event = SchedEvent.ScheduleEvent(task.activation, task, SchedEvent.EventType.activation.value)
                 arrival_events.append(event)
         arrival_events.sort(key=lambda x: x.timestamp)
         return arrival_events
-
-    def find_finish_events(self, time):
-        helper_list = []
-        for event in self.finish_events:
-            if event.timestamp == time:
-                self.output_file.add_scheduler_event(event)
-                self.executing = None
-            elif event.timestamp > time:
-                helper_list.append(event)
-        self.finish_events = helper_list
 
     def find_deadline_events(self, time):
         helper_list = []
@@ -81,8 +72,8 @@ class Scheduler:
 
 class NonPreemptive(Scheduler):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, output_file):
+        super().__init__(output_file)
         self.name = 'GenericNonPreemptiveScheduler'
 
     def execute(self):
@@ -90,6 +81,16 @@ class NonPreemptive(Scheduler):
 
     def is_feasible(self, tasks):
         pass
+
+    def find_finish_events(self, time):
+        helper_list = []
+        for event in self.finish_events:
+            if event.timestamp == time:
+                self.output_file.add_scheduler_event(event)
+                self.executing = None
+            elif event.timestamp > time:
+                helper_list.append(event)
+        self.finish_events = helper_list
 
     def find_start_events(self, time):
         helper_list = []
@@ -119,8 +120,8 @@ class NonPreemptive(Scheduler):
 
 class FIFO(NonPreemptive):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, output_file):
+        super().__init__(output_file)
         self.name = 'FIFO'
 
     def execute(self):
@@ -136,14 +137,11 @@ class FIFO(NonPreemptive):
 
         self.output_file.terminate_write()
 
-    def is_feasible(self, tasks):
-        pass
-
 
 class SJF(NonPreemptive):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, output_file):
+        super().__init__(output_file)
         self.name = 'SJF'
 
     def execute(self):
@@ -154,52 +152,126 @@ class SJF(NonPreemptive):
             self.find_finish_events(time)
             self.find_deadline_events(time)
             self.find_arrival_event(time)
+            # Sort by wcet:
             self.start_events.sort(key=lambda x: x.task.wcet)
             self.find_start_events(time)
             time += 1
 
-    def is_feasible(self, tasks):
-        pass
+        self.output_file.terminate_write()
 
 
 class HRRN(NonPreemptive):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, output_file):
+        super().__init__(output_file)
         self.name = 'HRRN'
+
+    def calculate_responsive_ratio(self, time):
+        for event in self.start_events:
+            if event.init <= time:
+                w = time - event.init
+                c = event.task.wcet
+                event.response_ratio = (w + c)/c
 
     def execute(self):
         self.arrival_events = self.get_all_arrivals()
 
         time = self.start
         while time <= self.end:
-            self.calculate_responsive_ratio(time)
             self.find_finish_events(time)
             self.find_deadline_events(time)
             self.find_arrival_event(time)
+            self.calculate_responsive_ratio(time)
+            # Sort by response ratio:
             self.start_events.sort(key=lambda x: x.response_ratio, reverse=True)
             self.find_start_events(time)
             time += 1
 
-    def calculate_responsive_ratio(self, time):
-        for event in self.arrival_events:
-            if event.timestamp <= time:
-                event.response_ratio += 1/event.task.wcet
 
-    def is_feasible(self, tasks):
-        pass
+class SRTF(Scheduler):
+
+    def __init__(self, output_file):
+        super().__init__(output_file)
+        self.name = 'ShortestRemainingTimeFirst'
+
+    def find_finish_events(self, time):
+        if self.executing:
+            if self.executing.executing_time == self.executing.task.wcet:
+                # Create finish event:
+                finish_event = SchedEvent.ScheduleEvent(
+                    time, self.executing.task, SchedEvent.EventType.finish.value)
+                finish_event.job = self.executing.job
+                self.output_file.add_scheduler_event(finish_event)
+                # Delete from start_events:
+                self.start_events.remove(self.executing)
+                # Free execute:
+                self.executing = None
+
+    def calculate_remaining_time(self):
+        for event in self.start_events:
+            event.remaining_time = event.task.wcet - event.executing_time
+
+    def create_deadline_event(self, event):
+        if event.task.real_time:
+            deadline_timestamp = event.timestamp + event.task.deadline
+            deadline_event = SchedEvent.ScheduleEvent(
+                deadline_timestamp, event.task, SchedEvent.EventType.deadline.value)
+            deadline_event.job = event.job
+            self.deadline_events.append(deadline_event)
+
+    def choose_executed(self, time):
+        if len(self.start_events) > 0:
+            self.start_events.sort(key=lambda x: x.remaining_time)
+            # Free current executing task:
+            if self.executing is None:
+                event = self.start_events[0]
+                event.timestamp = time
+                self.output_file.add_scheduler_event(event)
+                self.executing = event
+                # Create deadline event:
+                self.create_deadline_event(event)
+            # Change of task:
+            elif self.executing.remaining_time > self.start_events[0].remaining_time and \
+                    self.executing != self.start_events[0]:
+                # Create finish event of the current task in execution:
+                finish_timestamp = time
+                finish_event = SchedEvent.ScheduleEvent(
+                    finish_timestamp, self.executing.task, SchedEvent.EventType.finish.value)
+                finish_event.job = self.executing.job
+                self.output_file.add_scheduler_event(finish_event)
+                # Change task:
+                event = self.start_events[0]
+                event.timestamp = time
+                self.output_file.add_scheduler_event(event)
+                self.executing = event
+                # Create deadline event:
+                self.create_deadline_event(event)
+
+            '''print(f'EXECUTING {self.executing.task.id}:{self.executing.remaining_time}')
+            print(f'BEST REM {self.start_events[0].task.id}:{self.start_events[0].remaining_time}')
+            print(f'LEN STARTS {len(self.start_events)}')'''
+
+    def execute(self):
+        self.arrival_events = self.get_all_arrivals()
+
+        time = self.start
+        while time <= self.end:
+            self.find_finish_events(time)
+            self.find_deadline_events(time)
+            self.find_arrival_event(time)
+            self.calculate_remaining_time()
+            self.choose_executed(time)
+            if self.executing:
+                self.executing.executing_time += 1
+            time += 1
 
 
 class RoundRobin(Scheduler):
 
-    def __init__(self, quantum):
-        super().__init__()
+    def __init__(self, output_file, quantum):
+        super().__init__(output_file)
         self.name = 'RoundRobin'
-        self.deadlineNeeded = False
         self.quantum = quantum
 
     def execute(self):
-        pass
-
-    def is_feasible(self, tasks):
         pass
