@@ -47,15 +47,6 @@ class Scheduler:
         arrival_events.sort(key=lambda x: x.timestamp)
         return arrival_events
 
-    def find_deadline_events(self, time):
-        helper_list = []
-        for event in self.deadline_events:
-            if event.timestamp == time:
-                self.output_file.add_scheduler_event(event)
-            elif event.timestamp > time:
-                helper_list.append(event)
-        self.deadline_events = helper_list
-
     def find_arrival_event(self, time):
         helper_list = []
         for event in self.arrival_events:
@@ -69,6 +60,15 @@ class Scheduler:
                 helper_list.append(event)
         self.arrival_events = helper_list
 
+    def find_deadline_events(self, time):
+        helper_list = []
+        for event in self.deadline_events:
+            if event.timestamp == time:
+                self.output_file.add_scheduler_event(event)
+            elif event.timestamp > time:
+                helper_list.append(event)
+        self.deadline_events = helper_list
+
 
 class NonPreemptive(Scheduler):
 
@@ -77,9 +77,6 @@ class NonPreemptive(Scheduler):
         self.name = 'GenericNonPreemptiveScheduler'
 
     def execute(self):
-        pass
-
-    def is_feasible(self, tasks):
         pass
 
     def find_finish_events(self, time):
@@ -116,6 +113,38 @@ class NonPreemptive(Scheduler):
             if event.timestamp > time:
                 helper_list.append(event)
         self.start_events = helper_list
+
+
+class Preemptive(Scheduler):
+
+    def __init__(self, output_file):
+        super().__init__(output_file)
+        self.name = 'GenericPreemptiveScheduler'
+
+    def execute(self):
+        pass
+
+    def find_finish_events(self, time):
+        if self.executing:
+            if self.executing.executing_time == self.executing.task.wcet:
+                # Create finish event:
+                finish_event = SchedEvent.ScheduleEvent(
+                    time, self.executing.task, 'FINAL')
+                finish_event.job = self.executing.job
+                self.output_file.add_scheduler_event(finish_event)
+                # Delete from start_events:
+                self.start_events.remove(self.executing)
+                # Free execute:
+                self.executing = None
+
+    def create_deadline_event(self, event):
+        if event.task.real_time:
+            deadline_timestamp = event.timestamp + event.task.deadline
+            deadline_event = SchedEvent.ScheduleEvent(
+                deadline_timestamp, event.task, SchedEvent.EventType.deadline.value)
+            deadline_event.job = event.job
+            self.deadline_events.append(deadline_event)
+            event.task.first_time_executing = False
 
 
 class FIFO(NonPreemptive):
@@ -166,13 +195,6 @@ class HRRN(NonPreemptive):
         super().__init__(output_file)
         self.name = 'HRRN'
 
-    def calculate_responsive_ratio(self, time):
-        for event in self.start_events:
-            if event.init <= time:
-                w = time - event.init
-                c = event.task.wcet
-                event.response_ratio = (w + c)/c
-
     def execute(self):
         self.arrival_events = self.get_all_arrivals()
 
@@ -187,42 +209,28 @@ class HRRN(NonPreemptive):
             self.find_start_events(time)
             time += 1
 
+    def calculate_responsive_ratio(self, time):
+        for event in self.start_events:
+            if event.init <= time:
+                w = time - event.init
+                c = event.task.wcet
+                event.response_ratio = (w + c)/c
 
-class SRTF(Scheduler):
+
+class SRTF(Preemptive):
 
     def __init__(self, output_file):
         super().__init__(output_file)
         self.name = 'ShortestRemainingTimeFirst'
 
-    def find_finish_events(self, time):
-        if self.executing:
-            if self.executing.executing_time == self.executing.task.wcet:
-                # Create finish event:
-                finish_event = SchedEvent.ScheduleEvent(
-                    time, self.executing.task, SchedEvent.EventType.finish.value)
-                finish_event.job = self.executing.job
-                self.output_file.add_scheduler_event(finish_event)
-                # Delete from start_events:
-                self.start_events.remove(self.executing)
-                # Free execute:
-                self.executing = None
-
     def calculate_remaining_time(self):
         for event in self.start_events:
             event.remaining_time = event.task.wcet - event.executing_time
 
-    def create_deadline_event(self, event):
-        if event.task.real_time:
-            deadline_timestamp = event.timestamp + event.task.deadline
-            deadline_event = SchedEvent.ScheduleEvent(
-                deadline_timestamp, event.task, SchedEvent.EventType.deadline.value)
-            deadline_event.job = event.job
-            self.deadline_events.append(deadline_event)
-
     def choose_executed(self, time):
         if len(self.start_events) > 0:
             self.start_events.sort(key=lambda x: x.remaining_time)
-            # Free current executing task:
+            # Non task is executed:
             if self.executing is None:
                 event = self.start_events[0]
                 event.timestamp = time
@@ -245,7 +253,8 @@ class SRTF(Scheduler):
                 self.output_file.add_scheduler_event(event)
                 self.executing = event
                 # Create deadline event:
-                self.create_deadline_event(event)
+                if event.task.first_time_executing:
+                    self.create_deadline_event(event)
 
             '''print(f'EXECUTING {self.executing.task.id}:{self.executing.remaining_time}')
             print(f'BEST REM {self.start_events[0].task.id}:{self.start_events[0].remaining_time}')
@@ -266,12 +275,60 @@ class SRTF(Scheduler):
             time += 1
 
 
-class RoundRobin(Scheduler):
+class RoundRobin(Preemptive):
 
     def __init__(self, output_file, quantum):
         super().__init__(output_file)
         self.name = 'RoundRobin'
-        self.quantum = quantum
+        self.quantum = int(quantum)
+        self.quantum_counter = 0
+
+    def choose_executed(self, time):
+        if len(self.start_events) > 0:
+            # Non task is executed:
+            if self.executing is None:
+                event = self.start_events[0]
+                event.timestamp = time
+                self.output_file.add_scheduler_event(event)
+                self.executing = event
+                # Create deadline event:
+                self.create_deadline_event(event)
+                # Restart quantum counter
+                self.quantum_counter = 0
+            # Change of task:
+            elif self.quantum_counter == self.quantum:
+                # Create finish event of the current task in execution:
+                finish_timestamp = time
+                finish_event = SchedEvent.ScheduleEvent(
+                    finish_timestamp, self.executing.task, SchedEvent.EventType.finish.value)
+                finish_event.job = self.executing.job
+                self.output_file.add_scheduler_event(finish_event)
+                # Change task:
+                # 1) Delete from start_events:
+                del self.start_events[0]
+                # 2) Add this event to the final:
+                self.start_events.append(self.executing)
+                # 3) New event:
+                event = self.start_events[0]
+                event.timestamp = time
+                self.output_file.add_scheduler_event(event)
+                self.executing = event
+                # Create deadline event:
+                if event.task.first_time_executing:
+                    self.create_deadline_event(event)
+                # Restart counter
+                self.quantum_counter = 0
 
     def execute(self):
-        pass
+        self.arrival_events = self.get_all_arrivals()
+
+        time = self.start
+        while time <= self.end:
+            self.find_finish_events(time)
+            self.find_deadline_events(time)
+            self.find_arrival_event(time)
+            self.choose_executed(time)
+            self.quantum_counter += 1
+            if self.executing:
+                self.executing.executing_time += 1
+            time += 1

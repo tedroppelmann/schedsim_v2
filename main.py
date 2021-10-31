@@ -9,4 +9,4 @@ if __name__ == "__main__":
         scheduler.execute()
     else:
         raise Exception(
-            'Insufficient arguments. The names of the input and output files are required')
+            'Insufficient arguments. The name of the input and output files are required')

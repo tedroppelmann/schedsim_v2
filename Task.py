@@ -10,3 +10,4 @@ class Task:
         self.wcet = wcet
         # Preemptive facilities:
         self.finish = False
+        self.first_time_executing = True
