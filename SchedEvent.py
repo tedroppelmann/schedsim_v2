@@ -8,7 +8,6 @@ class EventType(Enum):
     start = 'S'
     finish = 'F'
     deadline_miss = 'M'
-    preemption = 'P'
 
 
 class ScheduleEvent:

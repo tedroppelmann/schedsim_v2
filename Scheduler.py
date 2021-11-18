@@ -38,7 +38,7 @@ class Scheduler:
                     event = SchedEvent.ScheduleEvent(i, task, SchedEvent.EventType.activation.value)
                     event.job = j
                     arrival_events.append(event)
-                    i += i + task.period
+                    i += task.period
                     j += 1
             elif task.type == 'sporadic':
                 task.init = task.activation
@@ -129,7 +129,7 @@ class Preemptive(Scheduler):
             if self.executing.executing_time == self.executing.task.wcet:
                 # Create finish event:
                 finish_event = SchedEvent.ScheduleEvent(
-                    time, self.executing.task, 'FINAL')
+                    time, self.executing.task, SchedEvent.EventType.finish.value)
                 finish_event.job = self.executing.job
                 self.output_file.add_scheduler_event(finish_event)
                 # Delete from start_events:
