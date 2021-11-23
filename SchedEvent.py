@@ -1,3 +1,6 @@
+# This module was based on SchedSim v1:
+# https://github.com/HEAPLab/schedsim/blob/master/SchedEvent.py
+
 from enum import Enum
 
 

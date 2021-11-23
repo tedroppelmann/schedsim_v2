@@ -3,6 +3,8 @@ import Task
 import Scheduler
 
 
+# The idea of this function was based on SchedSim v1:
+# https://github.com/HEAPLab/schedsim/blob/master/SchedIo.py
 def import_file(file_path, output_file):
     scheduler = None
     root_node = ET.parse(file_path).getroot()
@@ -69,6 +71,8 @@ def import_file(file_path, output_file):
     return scheduler
 
 
+# This class was based on SchedSim v1:
+# https://github.com/HEAPLab/schedsim/blob/master/SchedIo.py
 class SchedulerEventWriter:
     def __init__(self, output_file):
         self.out = open(output_file, 'w')

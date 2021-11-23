@@ -1,3 +1,5 @@
+# This class was based on SchedSim v1:
+# https://github.com/HEAPLab/schedsim/blob/master/Task.py
 class Task:
 
     def __init__(self, real_time, _type, _id, period, activation, deadline, wcet):
