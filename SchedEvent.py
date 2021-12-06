@@ -19,7 +19,7 @@ class ScheduleEvent:
         self.timestamp = timestamp
         self.task = task
         self.job = 0
-        self.processor = 0
+        self.processor = task.core
         self.type = _type
         self.extra = 0
         # HRRN facilities:

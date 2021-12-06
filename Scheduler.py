@@ -20,6 +20,8 @@ class Scheduler:
 
         self.output_file = SchedIO.SchedulerEventWriter(output_file)
 
+        self.cores = []
+
     @abstractmethod
     def execute(self):
         pass
@@ -31,6 +33,9 @@ class Scheduler:
     def get_all_arrivals(self):
         arrival_events = []
         for task in self.tasks:
+            # Here you can add the code to choose between different cores:
+            task.core = self.cores[0].id
+            # ------------------------------- #
             if task.type == 'periodic':
                 i = self.start
                 j = 1

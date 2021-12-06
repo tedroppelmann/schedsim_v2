@@ -13,3 +13,5 @@ class Task:
         # Preemptive facilities:
         self.finish = False
         self.first_time_executing = True
+        # Core:
+        self.core = None
